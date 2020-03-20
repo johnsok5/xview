@@ -156,6 +156,77 @@ def get_annotations(geojson_path):
     
     return annotations
 
+def clip_bboxes_to_ims(json_path):
+    '''
+    PURPOSE: Modify annotations with negative pixel coordinates or coordinates outside the imge they're on, since xview is a whole disaster of a dataset
+    IN: path to gt coco json
+    '''
+    # Open the file
+    with open(json_path, 'r') as f:
+        gt = json.load(f)
+
+    images = gt['images']
+
+    new_annotations = []
+    
+    #Tracking
+    low = 0
+    high = 0
+    removed = 0
+    
+    #Process each annotation one by one
+    for a in gt['annotations']:
+        
+        # Key annotation information
+        b = a['bbox']
+        new_b = b.copy()
+        im_id = a['image_id']
+        
+        # Process annotations with negative bbox values
+        if b[0] < 0 or b[1] < 0:
+            if b[0] < 0:
+                new_b[0] = 0
+                new_b[2] = b[2] + b[0]
+            if b[1] < 0:
+                new_b[1] = 0
+                new_b[3] = b[3] + b[1]
+            low += 1
+        
+        # Check for annotations with annotations too large for image
+        for i in images:
+            if i['id'] == im_id:
+                w = i['width']
+                h = i['height']
+
+                if (b[0] + b[2]) > w or (b[1] + b[3]) > h:
+                    if (b[0] + b[2]) > w:
+                        new_b[2] = w - b[0]
+                    if (b[1] + b[3]) > h:
+                        new_b[3] = h - b[1]
+                    high += 1
+        
+        # Check to see if the annotations that were off-image were totally off-image
+        if new_b[2] > 0 and new_b[3] > 0:
+            new_a = a.copy()
+            new_a['bbox'] = new_b
+            new_annotations.append(new_a)
+        else:
+            removed += 1
+
+
+    new_gt = gt.copy()
+    new_gt['annotations'] = new_annotations
+    
+    # Delete old json and save out new annotations
+    os.remove(json_path)
+
+    with open(json_path, 'w') as f:
+        json.dump(new_gt, f)
+        
+    print("Corrected {} boxes with coords below 0 and {} with coords larger than image".format(low, high))
+    print('Removed', removed, 'annotations')
+    return
+
 def make_json(geojson_path, classes_path, image_folder):
     '''
     PURPOSE: translate xview geojson to coco gt file
@@ -178,8 +249,10 @@ def make_json(geojson_path, classes_path, image_folder):
     info = {"year": '2018', "version": '1', "description": 'xView', "contributor": 'DIUx', "date_created": "03/17/2020"}
     # Refer to functions above
     images = get_images(image_folder)
+    print('All images processed')
     categories = get_categories(classes_path)
     annotations = get_annotations(geojson_path)
+    print('JSON sections complete')
     
     # Create final structure 
     coco_json = {
@@ -197,6 +270,10 @@ def make_json(geojson_path, classes_path, image_folder):
     # Save file
     with open(new_path, 'w') as f:
         json.dump(coco_json, f)
+    
+    print('Part 1 complete')
+    
+    clip_bboxes_to_ims(new_path)
     
     # Feedback
     print('New json', new_path)
