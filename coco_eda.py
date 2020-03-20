@@ -184,12 +184,38 @@ def display_random_ims(num_ims, json_path, image_folder):
         f,ax = plt.subplots(1, figsize = (30,30))
         img = plt.imread(im_path)
         plt.imshow(img)
-        
-        # Add boxes for each annotation
         for a in anns:
             b = a['bbox']
             rect = patches.Rectangle((b[0], b[1]), b[2], b[3], edgecolor = 'r', facecolor = "none")
             ax.add_patch(rect)
         plt.show()
+    
+    return
+
+def display_im_anns(im_id, json_path, image_folder):
+    '''
+    PURPOSE: Display some image with annotations from coco dataset
+    IN:
+        -im_id: int id of image from coco 'images' section
+        -json_path: coco gt file
+        -image_folder: folder where images in json_path are located
+    OUT:
+        -figures with each randomly selected image and its annotations
+    '''
+   
+    # Get annotations on this image
+    anns = anns_on_image(im_id, json_path)
+
+    # Display the image
+    im_path = image_folder + str(im_id) + '.tif'
+    plt.figure()
+    f,ax = plt.subplots(1, figsize = (30,30))
+    img = plt.imread(im_path)
+    plt.imshow(img)
+    for a in anns:
+        b = a['bbox']
+        rect = patches.Rectangle((b[0], b[1]), b[2], b[3], edgecolor = 'r', facecolor = "none")
+        ax.add_patch(rect)
+    plt.show()
     
     return
