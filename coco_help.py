@@ -5,6 +5,7 @@ import matplotlib.patches as patches
 import seaborn as sns
 import random
 import json
+from PIL import Image
 
 def get_anns_in_box(box, anns):
     b_anns = []
@@ -419,7 +420,7 @@ def show_im_chips(im_id, gt, size):
     
     return
 
-def subchip_images(gt, image_folder, chip_size):
+def subchip_images(gt, image_folder, new_image_folder, chip_size):
     '''
     Purpose: Take a coco style json and associated image folder, 
     and create a new coco json and image folder containing new images 
@@ -436,7 +437,7 @@ def subchip_images(gt, image_folder, chip_size):
     
     # Create new save locations
     gt_new_path = gt.replace('.', '_{}.'.format(chip_size))
-    new_image_folder = image_folder.replace('/', '_{}/'.format(chip_size))
+   
     if not os.path.exists(new_image_folder):
         os.mkdir(new_image_folder)
     
@@ -444,7 +445,6 @@ def subchip_images(gt, image_folder, chip_size):
     
     # Iterate through data one image at a time
     image_ids = get_im_ids(gt)
-    print(len(image_ids), "images found")
     images_processed = 0
     for im_id in image_ids:
         # Get all original annotations on this image
@@ -452,54 +452,58 @@ def subchip_images(gt, image_folder, chip_size):
         
         # Open the image
         im_name = image_folder + str(im_id) + '.tif'
-        img = plt.imread(im_name)
-        
-        # Get image dimensions
-        (y,x,c) = img.shape
-        num_x = int(x/chip_size)
-        num_y = int(y/chip_size)
-        
-        # Process each individual chip on this image
-        for x_i in range(num_x):
-            for y_i in range(num_y):
-                
-                # Get chip coords
-                c_x1 = x_i * chip_size
-                c_y1 = y_i * chip_size
-                bbox = [c_y1, c_x1, chip_size, chip_size]
-                
-                # If there are annotations on this image, save out a chip
-                anns = get_anns_in_box(bbox, im_anns)
-                if len(anns) > 0:
-                    chip_name = str(chip_num) + '_' + str(im_id) + '_{}_{}_{}_{}'.format(c_x1, c_y1, chip_size, chip_size) + '.tif'
-                    chip_path = new_image_folder + str(chip_num) + '_' + str(im_id) + '_{}_{}_{}_{}'.format(c_x1, c_y1, chip_size, chip_size) + '.tif'
+        if os.path.exists(im_name):
+            img = plt.imread(im_name)
+            
+            # Get image dimensions
+            (y,x,c) = img.shape
+            num_x = int(x/chip_size)
+            num_y = int(y/chip_size)
+            
+            # Process each individual chip on this image
+            for x_i in range(num_x):
+                for y_i in range(num_y):
                     
-                    # Update image annotation
-                    new_image = {
-                        'file_name' : chip_name,
-                        'width' : chip_size,
-                        'height' : chip_size,
-                        'id' : chip_num,
-                        'license' : 1
-                    }
-                    new_images.append(new_image)
+                    # Get chip coords
+                    c_x1 = x_i * chip_size
+                    c_y1 = y_i * chip_size
+                    bbox = [c_y1, c_x1, chip_size, chip_size]
                     
-                    # Update object annotations
-                    for a in anns:
-                        new_a = a.copy()
-                        new_a['image_id'] = chip_num
-                        new_anns.append(new_a)
-                    
-                    
-                    chip_num += 1
-                    image_chip = img[c_x1:c_x1 + chip_size, c_y1:c_y1 + chip_size]
-                    
-                    if not os.path.exists(chip_path):
-                        plt.imsave(chip_path, image_chip)
+                    # If there are annotations on this image, save out a chip
+                    anns = get_anns_in_box(bbox, im_anns)
+                    if len(anns) > 0:
+                        chip_name = str(chip_num) + '_' + str(im_id) + '_{}_{}_{}_{}'.format(c_x1, c_y1, chip_size, chip_size) + '.png'
+                        chip_path = new_image_folder + chip_name
                         
-        images_processed += 1
-        if images_processed % 100 == 0:
-            print(images_processed, "images processed")
+                        # Update image annotation
+                        new_image = {
+                            'file_name' : chip_name,
+                            'width' : chip_size,
+                            'height' : chip_size,
+                            'id' : chip_num,
+                            'license' : 1
+                        }
+                        new_images.append(new_image)
+                        
+                        # Update object annotations
+                        for a in anns:
+                            new_a = a.copy()
+                            new_a['image_id'] = chip_num
+                            new_anns.append(new_a)
+                        
+                        
+                        chip_num += 1
+                        image_chip = img[c_x1:c_x1 + chip_size, c_y1:c_y1 + chip_size]
+                        
+                        if not os.path.exists(chip_path):
+                            try:
+                                plt.imsave(chip_path, image_chip)
+                            except:
+                                continue
+                            
+            images_processed += 1
+            if images_processed % 50 == 0:
+                print(images_processed, "images processed")
         
     # Save out new gt file
     new_gt = gt_og.copy()
@@ -514,5 +518,154 @@ def subchip_images(gt, image_folder, chip_size):
         
     print('New ground truth:', gt_new_path)
     print('New images:', new_image_folder)
+    
+    return gt_new_path
+
+def find_im_path(im_id, image_paths):
+    
+    for i in image_paths:
+        image = i.split('/')[-1]
+        im_num = int(image.split('.')[0])
+        if im_num == im_id:
+            return i
+    
+    return "None"
+
+def get_image_paths(image_folder):
+    # Image paths
+    folders = os.listdir(image_folder)
+    folders = [image_folder + f + '/' for f in folders]
+    image_paths = []
+    for f in folders:
+        images = os.listdir(f)
+        images = [f + i for i in images]
+        image_paths.extend(images)
+    
+    return image_paths
+
+def subchip_images_colab(gt, image_folder, new_image_folder, chip_size):
+    '''
+    Purpose: Take a coco style json and associated image folder of image folders, 
+    and create a new coco json and image folder containing new images 
+    of the specified size
+    '''
+    
+    # Open gt json
+    with open(gt, 'r') as f:
+        gt_og = json.load(f)
+
+    print(len(gt_og['annotations']), "annotations originally")
+    
+    # New data
+    new_images = []
+    new_anns = []
+    
+    # Create new save locations
+    gt_new_path = gt.replace('.', '_{}.'.format(chip_size))
+   
+    if not os.path.exists(new_image_folder):
+        os.mkdir(new_image_folder)
+        
+    # Get paths to all available images in sub-folders
+    image_paths = get_image_paths(image_folder)    
+    print(len(image_paths), 'images discovered in folders')
+    
+    chip_num = 0
+    
+    # Iterate through data one image at a time
+    image_ids = get_im_ids(gt)
+    images_processed = 0
+    for im_id in image_ids:
+        # Get all original annotations on this image
+        im_anns = anns_on_image(im_id, gt)
+        
+        # Open the image
+        im_name = find_im_path(im_id, image_paths)
+        if os.path.exists(im_name):
+            img = plt.imread(im_name)
+            
+            # Get image dimensions
+            (y,x,c) = img.shape
+            num_x = int(x/chip_size)
+            num_y = int(y/chip_size)
+            
+            # Process each individual chip on this image
+            for x_i in range(num_x):
+                for y_i in range(num_y):
+                    
+                    # Get chip coords
+                    c_x1 = x_i * chip_size
+                    c_y1 = y_i * chip_size
+                    bbox = [c_y1, c_x1, chip_size, chip_size]
+                    
+                    # If there are annotations on this image, save out a chip
+                    anns = get_anns_in_box(bbox, im_anns)
+                    if len(anns) > 0:
+                        chip_name = str(chip_num) + '_' + str(im_id) + '_{}_{}_{}_{}'.format(c_x1, c_y1, chip_size, chip_size) + '.png'
+                        chip_path = new_image_folder + chip_name
+                        
+                        # Update image annotation
+                        new_image = {
+                            'file_name' : chip_name,
+                            'width' : chip_size,
+                            'height' : chip_size,
+                            'id' : chip_num,
+                            'license' : 1
+                        }
+                        new_images.append(new_image)
+                        
+                        # Update object annotations
+                        for a in anns:
+                            new_a = a.copy()
+                            new_a['image_id'] = chip_num
+                            new_anns.append(new_a)
+                        
+                        
+                        chip_num += 1
+                        image_chip = img[c_x1:c_x1 + chip_size, c_y1:c_y1 + chip_size]
+                        
+                        if not os.path.exists(chip_path):
+                            try:
+                                plt.imsave(chip_path, image_chip)
+                            except:
+                                continue
+                            
+            images_processed += 1
+            if images_processed % 50 == 0:
+                print(images_processed, "images processed")
+        else:
+            print("Couldn't find", im_id)
+        
+    # Save out new gt file
+    new_gt = gt_og.copy()
+    new_gt['images'] = new_images
+    new_gt['annotations'] = new_anns
+
+    print(len(new_anns), "annotations saved")
+    
+    if os.path.exists(gt_new_path):
+        os.remove(gt_new_path)
+    
+    with open(gt_new_path, 'w') as f:
+        json.dump(new_gt, f)
+        
+    print('New ground truth:', gt_new_path)
+    print('New images:', new_image_folder)
+    
+    return gt_new_path
+
+def convert_imgs_rgb(folder):
+    '''
+    Purpose: foce all images in folder to assume kosher image format
+    '''
+    test_images = os.listdir(folder)
+    test_images = [folder + i for i in test_images]
+    count  = 0
+    for i in test_images:   
+        img = Image.open(i).convert('RGB')
+        img.save(i)
+        count += 1
+        if count % 250 == 0:
+            print(count)
     
     return
